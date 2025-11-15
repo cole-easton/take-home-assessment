@@ -113,16 +113,17 @@ export function FundingModal({ accountId, onClose, onSuccess }: FundingModalProp
               {...register("accountNumber", {
                 required: `${fundingType === "card" ? "Card" : "Account"} number is required`,
                 pattern: {
-                  value: fundingType === "card" ? /^\d{16}$/ : /^\d+$/,
-                  message: fundingType === "card" ? "Card number must be 16 digits" : "Invalid account number",
+                  value: fundingType === "card" ? /^\d{13,19}$/ : /^\d+$/,
+                  message: fundingType === "card" ? "Card number must be between 13 and 19 digits" : "Invalid account number",
                 },
                 validate: {
                   validCard: (value) => {
                     if (fundingType !== "card") return true;
                     let sum = 0;
+                    const parity = value.length % 2;
                     for (let i = 0; i < value.length; i++) {
                       const cardNumber = parseInt(value[i]);
-                      if (i % 2 === 1) {
+                      if (i % 2 !== parity) {
                         sum += cardNumber;
                       }
                       else if (cardNumber > 4) {
@@ -132,8 +133,38 @@ export function FundingModal({ accountId, onClose, onSuccess }: FundingModalProp
                         sum += 2 * cardNumber;
                       }
                     }
-
-                    return sum % 10 === 0 && (value.startsWith("4") || value.startsWith("5")) || "Invalid card number";
+                    const LuhnPass = sum % 10 === 0;
+                    const len = value.length;
+                    return LuhnPass &&
+                      (
+                        //American Express
+                        ((value.startsWith("34") || value.startsWith("37")) && len === 15) ||
+                        // China T-Union
+                        (value.startsWith("31") && len === 19) ||
+                        // China UnionPay
+                        (value.startsWith("62") && len >= 16 && len <= 19) ||
+                        // Diners Club International
+                        ((value.startsWith("30") || value.startsWith("36") || value.startsWith("38") || value.startsWith("39")) && len >= 14 && len <= 19) ||
+                        // Discover Card
+                        ((value.startsWith("6011") ||
+                          (parseInt(value.substring(0, 3)) >= 644 && parseInt(value.substring(0, 3)) <= 649) ||
+                          value.startsWith("65") ||
+                          (parseInt(value.substring(0, 6)) >= 622126 && parseInt(value.substring(0, 6)) <= 622925)) &&
+                          len >= 16 && len <= 19) ||
+                        // Mastercard
+                        (((parseInt(value.substring(0, 4)) >= 2221 && parseInt(value.substring(0, 4)) <= 2720) ||
+                          (parseInt(value.substring(0, 2)) >= 51 && parseInt(value.substring(0, 2)) <= 55)) &&
+                          len === 16) ||
+                        // JCB
+                        ((parseInt(value.substring(0, 4)) >= 3528 && parseInt(value.substring(0, 4)) <= 3589) && len >= 16 && len <= 19) ||
+                        // Visa
+                        (value.startsWith("4") && (len === 13 || len === 16 || len === 19)) ||
+                        // Uzcard
+                        ((value.startsWith("8600") || value.startsWith("5614")) && len === 16) ||
+                        // GPN
+                        ((value.startsWith("1946") || ["50", "56", "58"].includes(value.substring(0, 2)) || (parseInt(value.substring(0, 2)) >= 60 && parseInt(value.substring(0, 2)) <= 63)) && (len === 16 || len === 18 || len === 19))
+                      )
+                      || "Invalid card number";
                   },
                 },
               })}
