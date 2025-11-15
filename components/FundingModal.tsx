@@ -164,6 +164,8 @@ export function FundingModal({ accountId, onClose, onSuccess }: FundingModalProp
                         // GPN
                         ((value.startsWith("1946") || ["50", "56", "58"].includes(value.substring(0, 2)) || (parseInt(value.substring(0, 2)) >= 60 && parseInt(value.substring(0, 2)) <= 63)) && (len === 16 || len === 18 || len === 19))
                       )
+                      // LankaPay (doesn't use Luhn's algorithm)
+                      || (value.startsWith("357111") && len === 15)
                       || "Invalid card number";
                   },
                 },
