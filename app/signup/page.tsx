@@ -197,7 +197,6 @@ export default function SignupPage() {
                     validate: {
                       isAdult: (value) => {
                         const birth = new Date(value);
-                        console.log(birth);
                         const now = new Date();
                         const age =
                           now.getFullYear() -
