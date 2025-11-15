@@ -189,7 +189,24 @@ export default function SignupPage() {
                   Date of Birth
                 </label>
                 <input
-                  {...register("dateOfBirth", { required: "Date of birth is required" })}
+                  {...register("dateOfBirth", {
+                    required: "Date of birth is required",
+                    validate: {
+                      isAdult: (value) => {
+                        const birth = new Date(value);
+                        console.log(birth);
+                        const now = new Date();
+                        const age =
+                          now.getFullYear() -
+                          birth.getFullYear() -
+                          (now.getMonth() < birth.getMonth() ||
+                            (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())
+                            ? 1
+                            : 0);
+                        return age >= 18 || "Users must be at least 18 years of age to create an account.";
+                      }
+                    }
+                  })}
                   type="date"
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
                 />

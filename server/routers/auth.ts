@@ -16,7 +16,21 @@ export const authRouter = router({
         firstName: z.string().min(1),
         lastName: z.string().min(1),
         phoneNumber: z.string().regex(/^\+?\d{10,15}$/),
-        dateOfBirth: z.string(),
+        dateOfBirth: z.string().refine((dob) => {
+          const birth = new Date(dob);
+          const now = new Date();
+          const age =
+            now.getFullYear() -
+            birth.getFullYear() -
+            (now.getMonth() < birth.getMonth() ||
+              (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())
+              ? 1
+              : 0);
+
+          return age >= 18;
+        }, {
+          message: "Users must be at least 18 years of age to create an account."
+        }),
         ssn: z.string().regex(/^\d{9}$/),
         address: z.string().min(1),
         city: z.string().min(1),
