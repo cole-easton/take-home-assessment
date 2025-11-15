@@ -119,7 +119,21 @@ export function FundingModal({ accountId, onClose, onSuccess }: FundingModalProp
                 validate: {
                   validCard: (value) => {
                     if (fundingType !== "card") return true;
-                    return value.startsWith("4") || value.startsWith("5") || "Invalid card number";
+                    let sum = 0;
+                    for (let i = 0; i < value.length; i++) {
+                      const cardNumber = parseInt(value[i]);
+                      if (i % 2 === 1) {
+                        sum += cardNumber;
+                      }
+                      else if (cardNumber > 4) {
+                        sum += 2 * cardNumber - 9;
+                      }
+                      else {
+                        sum += 2 * cardNumber;
+                      }
+                    }
+
+                    return sum % 10 === 0 && (value.startsWith("4") || value.startsWith("5")) || "Invalid card number";
                   },
                 },
               })}
