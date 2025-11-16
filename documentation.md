@@ -5,12 +5,144 @@
 ---
 
 ## Summary of Work  
-- Total Issues fixed: 
-- Issues fixed:    
+ 
+### Issues fixed:  
+
+#### Critical
+| Ticket | Description | Status |
+|---|---|---:|
+| VAL-202 | Date of Birth Validation | ✅⚠️ |
+| VAL-206 | Card Number Validation | ✅ |
+| VAL-208 | Weak Password Requirements | ✅ |
+| SEC-301 | SSN Storage | ✅ |
+| SEC-303 | XSS Vulnerability | ✅ |
+| PERF-401 | Account Creation Error | ✅ |
+| PERF-405 | Missing Transactions | ✅ |
+| PERF-406 | Balance Calculation | ⚠️ |
+| PERF-408 | Resource Leak | ✅(⚠️) |
+
+
+#### High
+| Ticket | Description | Status |
+|---|---|---:|
+| VAL-201 | Email Validation Problems | ❌ |
+| VAL-205 | Zero Amount Funding | ❌ |
+| VAL-207 | Routing Number Optional | ❌ |
+| VAL-210 | Card Type Detection | ✅ |
+| SEC-302 | Insecure Random Numbers | ❌ |
+| SEC-304 | Session Management | ❌ |
+| PERF-403 | Session Expiry | ❌ |
+| PERF-407 | Performance Degradation | ✅ |
+
+
+#### Medium
+| Ticket | Description | Status |
+|---|---|---:|
+| UI-101 | Dark Mode Text Visibility | ❌ |
+| VAL-203 | State Code Validation | ❌ |
+| VAL-204 | Phone Number Format | ❌ |
+| VAL-209 | Amount Input Issues | ❌ |
+| PERF-402 | Logout Issues | ❌ |
+| PERF-404 | Transaction Sorting | ✅ |
+
 
 ---
 
 ## Detailed Issue Reports
+
+### Ticket SEC-301: SSN Storage
+**Priority:** Critical 
+**Status:** Fixed
+
+#### Root Cause
+The user's SSN is written as typed in the frontend directly to the database.
+
+#### Fix Implemented
+I added an encrpytion/decryption utility at `lib/security/encryption.js` which encrypts data using `AES-256-GSM` as implemented in the built-in `node:crypto` module.  I used this utility to encrypt the SSN in `server/router/auth.ts`:
+```ts
+const encryptedSSN = encrypt(input.ssn);
+
+      await db.insert(users).values({
+        ...input,
+        password: hashedPassword,
+        ssn: encryptedSSN,
+      });
+```
+Unlike the password field which was hashed, we encrypt SSN because we may reasonably need to access it for legitimate business purposes.
+
+Since this fixes the issue for future users, but does not retroactively fix the database for existing users, we need to be able to encrypt the SSNs in the existing database.  To do this, I imported the `encrypt` function into `scripts/db-utils.js` and added an `encrypt-ssns` command:
+```js
+else if (command === "encrypt-ssns") {
+  console.log("\n=== Encrypting existing SSNs ===");
+
+  const users = db.prepare("SELECT id, ssn FROM users").all();
+
+  if (users.length === 0) {
+    console.log("No users found.");
+  } else {
+    const update = db.prepare("UPDATE users SET ssn = ? WHERE id = ?");
+
+    users.forEach((user) => {
+      if (user.ssn && !user.ssn.includes(":")) { // crude check to avoid double-encrypting
+        const encrypted = encrypt(user.ssn);
+        update.run(encrypted, user.id);
+        console.log(`Encrypted SSN for user ID ${user.id}`);
+      }
+    });
+
+    console.log("All SSNs encrypted.");
+  }
+}
+```
+In order to use this quickly, I also added the following script to `package.json`:
+```json
+"db:encrypt-ssns": "node scripts/db-utils.js encrypt-ssns"
+```
+This enables the command to be easily run on the production database.
+
+(Note that the encryption utility was written in JavaScript rather than TypeScript so that it could be imported into `db-util.js`.)
+
+#### Comments
+`encryption.js` contains the lines 
+```js
+const key = Buffer.from(
+    process.env.ENCRYPTION_KEY ??
+    "0123456789abcdef0123456789abcdef", // fallback for assessment evaluators
+    "utf8"
+);
+``` 
+The fallback purely for the purposes of the assessment to minimize setup needed for the hiring manager; for an actual application, each developer would keep the key in their own `.env` file and no fallback would be provided.  A .env.example file is included as an example of what the `.env` file should look like.
+
+#### Testing
+To test the encryption methods, I installed and set up Vitest and created `tests/db.test.ts`.
+```ts
+import { describe, it, expect } from "vitest";
+import { encrypt, decrypt } from "../lib/security/encryption";
+
+describe("SSN Encryption / Decryption", () => {
+  it("should decrypt an encrypted value back to the original", () => {
+    const original = "123-45-6789";
+    const encrypted = encrypt(original);
+
+    expect(encrypted).not.toBe(original);
+
+    const decrypted = decrypt(encrypted);
+    expect(decrypted).toBe(original);
+  });
+
+  // having identical encrypted entries in a database provides valuable info to bad actors
+  it("should produce different ciphertexts even for the same input", () => {
+    const value = "987-65-4321";
+    const enc1 = encrypt(value);
+    const enc2 = encrypt(value);
+
+    expect(enc1).not.toBe(enc2);
+    expect(decrypt(enc1)).toBe(value);
+    expect(decrypt(enc2)).toBe(value);
+  });
+});
+```
+Moreover, ensure that the encryption was applied to the database, I created a new user after implementing the change.  I temporily modified `db.utils` so that `npm run db:list-users` also includes the SSN.  I then ran this command and checked that the SSN on the new user was uncrypted.  Since I had already created users with unencrypted SSNs, I then ran `npm run db:encrypt-ssns`, the command I just created, and then reran `npm run db:list-users` to verify that the SSNs were encrypted.  I then reverted these modifications to `db.utils`. 
 
 ### Ticket VAL-202: Date of Birth Validation
 **Priority:** Critical 
@@ -210,72 +342,6 @@ This way, there is not a data correctnessness violation, and no data in guessed 
     }
 ```
 
-### Ticket SEC-301: SSN Storage
-**Priority:** Critical 
-**Status:** Fixed
-
-#### Root Cause
-The user's SSN is written as typed in the frontend directly to the database.
-
-#### Fix Implemented
-I added an encrpytion/decryption utility at `lib/security/encryption.js` which encrypts data using `AES-256-GSM` as implemented in the built-in `node:crypto` module.  I used this utility to encrypt the SSN in `server/router/auth.ts`:
-```ts
-const encryptedSSN = encrypt(input.ssn);
-
-      await db.insert(users).values({
-        ...input,
-        password: hashedPassword,
-        ssn: encryptedSSN,
-      });
-```
-Unlike the password field which was hashed, we encrypt SSN because we may reasonably need to access it for legitimate business purposes.
-
-Since this fixes the issue for future users, but does not retroactively fix the database for existing users, we need to be able to encrypt the SSNs in the existing database.  To do this, I imported the `encrypt` function into `scripts/db-utils.js` and added an `encrypt-ssns` command:
-```js
-else if (command === "encrypt-ssns") {
-  console.log("\n=== Encrypting existing SSNs ===");
-
-  const users = db.prepare("SELECT id, ssn FROM users").all();
-
-  if (users.length === 0) {
-    console.log("No users found.");
-  } else {
-    const update = db.prepare("UPDATE users SET ssn = ? WHERE id = ?");
-
-    users.forEach((user) => {
-      if (user.ssn && !user.ssn.includes(":")) { // crude check to avoid double-encrypting
-        const encrypted = encrypt(user.ssn);
-        update.run(encrypted, user.id);
-        console.log(`Encrypted SSN for user ID ${user.id}`);
-      }
-    });
-
-    console.log("All SSNs encrypted.");
-  }
-}
-```
-In order to use this quickly, I also added the following script to `package.json`:
-```json
-"db:encrypt-ssns": "node scripts/db-utils.js encrypt-ssns"
-```
-This enables the command to be easily run on the production database.
-
-(Note that the encryption utility was written in JavaScript rather than TypeScript so that it could be imported into `db-util.js`.)
-
-#### Comments
-`encryption.js` contains the lines 
-```js
-const key = Buffer.from(
-    process.env.ENCRYPTION_KEY ??
-    "0123456789abcdef0123456789abcdef", // fallback for assessment evaluators
-    "utf8"
-);
-``` 
-The fallback purely for the purposes of the assessment to minimize setup needed for the hiring manager; for an actual application, each developer would keep the key in their own `.env` file and no fallback would be provided.  A .env.example file is included as an example of what the `.env` file should look like.
-
-#### Testing
-To test the encryption, I created a new user after implementing the change.  I temporily modified `db.utils` so that `npm run db:list-users` also includes the SSN.  I then ran this command and checked that the SSN on the new user was uncrypted.  Since I had already created users with unencrypted SSNs, I then ran `npm run db:encrypt-ssns`, the command I just created, and then reran `npm run db:list-users` to verify that the SSNs were encrypted.  I then reverted these modifications to `db.utils`. 
-
 ### Ticket PERF-405: Missing Transactions
 **Priority:** Critical
 **Status:** Fixed
@@ -470,8 +536,6 @@ const sqlite = globalThis._sqlite;
 
 export const db = drizzle(globalThis._sqlite, { schema });
 
-const connections: Database.Database[] = [];
-
 export function initDb() {
   // Create tables if they don't exist
   sqlite.exec(`
@@ -489,3 +553,6 @@ declare global {
 
 #### Comments 
 A single connection is not viable for a global banking platform.  But since SQLite is file-based and locks the database file when database operations are made, this issue is not resolved by creating more connections.  The architecture created in the fix is approprate for SQLite, but SQLite is not approprate for a global banking platform.  In order to scale the application, a more robust database allowing concurrency such as PostgreSQL is recommended.
+
+#### Testing
+The test in `tests/db.test.ts` ensures that the `Database()` constructor for the connection is called only once after several imports.
