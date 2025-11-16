@@ -390,4 +390,44 @@ import { eq, and, desc } from "drizzle-orm";
 ```
 
 #### Testing
-Before this fix, the transactions appeared in roughly ascending order.  After the fix, the appear in descending order, so I know that it worked as intended.
+Before this fix, the transactions appeared in roughly ascending order.  After the fix, the appear in descending order, indicating that it worked as intended.
+
+### Ticket PERF-406: Balance Calculation
+**Priority:** Critical
+**Status:** Partially fixed
+
+#### Root Cause
+One source of this issue is that in `server/routers/account.ts`, we have the code
+```ts
+for (let i = 0; i < 100; i++) {
+  finalBalance = finalBalance + amount / 100;
+}
+```
+By shifting the significant digits (significand/mantissa) of the `amount` float to the right, those that extend beyong the end of `finalBalance`'s significand are truncated.  This is unnecessary, as the loop is mathematically (but not programmatically) 
+equivalent to 
+```ts
+finalBalance += amount;
+```
+Which leads to fewer bits of the significant being truncated.
+
+#### Fix Implemented
+The above loop was replaced with
+```ts
+finalBalance += amount;
+```
+
+#### Additional Changes Needed
+The floating point issue described above is not fully resolved with this fix.  With a large enough account balance, the least significant bit of the significand will represent a quantity greater than a 0.01, meaning that monerary quantities cannot be accurately recorded.  Drift can occur even without the exponent reaching this size.  **The recommended solution is to store account balances as integer cents.**  The possibility of integer overflow is noted, but since SQLite can hold integers larger than 9.2 pentillion, which as cents would represent over 92 quadrillion dollars, no such user currently exists on Earth.  Should one emerge, we can request that they open a second account or consider additional fixes.  As such, we disregard this issue for now and proceed with the recommended fix. 
+
+
+To do this, we should update the `account` schema in `lib/db/schema.ts`.  Line 27 of the `account` schema is currently
+```ts
+balance: real("balance").default(0).notNull(),
+```
+to 
+```ts
+balance: integer("balance").default(0).notNull(),
+```
+Moreover, the frontend will need to be modified so that the integer cent amounts are formatted in dollars as expected.  This is perhaps most easily dont by stringifying the integer and inserting a decimal point two places from the right.
+
+Finally, we need to migrate existing user accounts to the new schema, perhaps by using a script similar to the one described in the fix to Ticket SEC-301.
