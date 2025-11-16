@@ -47,6 +47,15 @@
 
 
 ---
+## Test Coverage
+
+To provide a sample for what tests should look like and a framework for adding further tests, Vitest is used for a small selection of tests:
+
+- **SSN Encryption/Decryption:** Unit tests in `tests/encryption.test.ts` using Vitest to ensure encrypted SSNs can be decrypted and produce non-repeating ciphertexts.  
+- **Resource Leak / SQLite Singleton:** Unit tests in `tests\db.test.ts` confirmed that the singleton connection works by checking that multiple imports do not create new connections.  
+
+
+---
 
 ## Detailed Issue Reports
 
@@ -58,7 +67,7 @@
 The user's SSN is written as typed in the frontend directly to the database.
 
 #### Fix Implemented
-I added an encryption/decryption utility at `lib/security/encryption.js` which encrypts data using `AES-256-GSM` as implemented in the built-in `node:crypto` module.  I used this utility to encrypt the SSN in `server/router/auth.ts`:
+I added an encryption/decryption utility at `lib/security/encryption.js` which encrypts data using `AES-256-GCM` as implemented in the built-in `node:crypto` module.  I used this utility to encrypt the SSN in `server/router/auth.ts`:
 ```ts
 const encryptedSSN = encrypt(input.ssn);
 
