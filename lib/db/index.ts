@@ -11,8 +11,6 @@ const sqlite = globalThis._sqlite;
 
 export const db = drizzle(globalThis._sqlite, { schema });
 
-const connections: Database.Database[] = [];
-
 export function initDb() {
   // Create tables if they don't exist
   sqlite.exec(`
