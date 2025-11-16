@@ -274,3 +274,85 @@ The fallback purely for the purposes of the assessment to minimize setup needed 
 #### Testing
 To test the encryption, I created a new user after implementing the change.  I temporily modified `db.utils` so that `npm run db:list-users` also includes the SSN.  I then ran this command and checked that the SSN on the new user was uncrypted.  Since I had already created users with unencrypted SSNs, I then ran `npm run db:encrypt-ssns`, the command I just created, and then reran `npm run db:list-users` to verify that the SSNs were encrypted.  I then reverted these modifications to `db.utils`. 
 
+### Ticket PERF-405: Missing Transactions
+**Priority:** Critical
+**Status:** Fixed
+
+#### Root Cause
+Line 10 of `components/TransactionList.tsx` reads:
+```tsx
+const { data: transactions, isLoading } = trpc.account.getTransactions.useQuery({ accountId });
+```
+This line queries the transactions for the current user's account as caches the result.  When the line 
+```tsx
+  const fundAccountMutation = trpc.account.fundAccount.useMutation();
+```
+is run in `components/FundingModal.tsx`, the cached result remains unchanged.
+
+#### Fix Implemented
+The line in `components/FundingModal.tsx` reference above was replaced with 
+```tsx
+  const utils = trpc.useUtils();
+  const fundAccountMutation = trpc.account.fundAccount.useMutation({
+    onSuccess: () => {
+      utils.account.getTransactions.invalidate({ accountId });
+      onSuccess();
+    },
+  });
+```
+This invalidates the data currently being used by `components/TransactionList.tsx`, and forces it to query the database again.
+
+#### Testing
+Before this change, newly created transactions would not appear in my account.  Sometimes, switching back and forth between accounts could make them appear, but the only way I could make it work with certainly was to log out and then back in again.
+After the change, new transactions appear immediately when funding the account.
+
+### Ticket PERF-407: Performance Degradation
+**Priority:** High
+**Status:** Fixed
+
+#### Root Cause
+ `server/routers/account.ts` previously contained the code 
+```ts
+const accountTransactions = await db
+        .select()
+        .from(transactions)
+        .where(eq(transactions.accountId, input.accountId));
+
+      const enrichedTransactions = [];
+      for (const transaction of accountTransactions) {
+        const accountDetails = await db.select().from(accounts).where(eq(accounts.id, transaction.accountId)).get();
+
+        enrichedTransactions.push({
+          ...transaction,
+          accountType: accountDetails?.accountType,
+        });
+      }
+```
+Notice that the `accountDetails` are queried each iteration of the loop, leading to a potentially large number of database queries, each for the purpose of acquiring the `accountType`for the **same account**.  
+
+#### Fix Implemented
+Directly above the code block above are the lines:
+```tsx
+const account = await db
+        .select()
+        .from(accounts)
+        .where(and(eq(accounts.id, input.accountId), eq(accounts.userId, ctx.user.id)))
+        .get();
+
+      if (!account) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Account not found",
+        });
+      }
+```
+So, we've already queried the account, meaning that we can simply access its type without querying the database for each transaction.  Thus, we replace the `for` loop with 
+```tsx
+for (const transaction of accountTransactions) {
+  enrichedTransactions.push({
+    ...transaction,
+    accountType: account.accountType,
+  });
+}
+```
+Without performing a datbase query each iteration, the operation is significantly faster.
