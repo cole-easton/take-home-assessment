@@ -58,7 +58,7 @@
 The user's SSN is written as typed in the frontend directly to the database.
 
 #### Fix Implemented
-I added an encrpytion/decryption utility at `lib/security/encryption.js` which encrypts data using `AES-256-GSM` as implemented in the built-in `node:crypto` module.  I used this utility to encrypt the SSN in `server/router/auth.ts`:
+I added an encryption/decryption utility at `lib/security/encryption.js` which encrypts data using `AES-256-GSM` as implemented in the built-in `node:crypto` module.  I used this utility to encrypt the SSN in `server/router/auth.ts`:
 ```ts
 const encryptedSSN = encrypt(input.ssn);
 
@@ -68,7 +68,7 @@ const encryptedSSN = encrypt(input.ssn);
         ssn: encryptedSSN,
       });
 ```
-Unlike the password field which was hashed, we encrypt SSN because we may reasonably need to access it for legitimate business purposes.
+Unlike the password field, which was hashed, we encrypt the SSN because we may reasonably need to access it for legitimate business purposes.
 
 Since this fixes the issue for future users, but does not retroactively fix the database for existing users, we need to be able to encrypt the SSNs in the existing database.  To do this, I imported the `encrypt` function into `scripts/db-utils.js` and added an `encrypt-ssns` command:
 ```js
@@ -111,7 +111,7 @@ const key = Buffer.from(
     "utf8"
 );
 ``` 
-The fallback purely for the purposes of the assessment to minimize setup needed for the hiring manager; for an actual application, each developer would keep the key in their own `.env` file and no fallback would be provided.  A .env.example file is included as an example of what the `.env` file should look like.
+The fallback is purely for the purposes of the assessment to minimize setup needed for the hiring manager; for an actual application, each developer would keep the key in their own `.env` file, and no fallback would be provided.  A .env.example file is included as an example of what the `.env` file should look like.
 
 #### Testing
 To test the encryption methods, I installed and set up Vitest and created `tests/db.test.ts`.
@@ -142,7 +142,7 @@ describe("SSN Encryption / Decryption", () => {
   });
 });
 ```
-Moreover, ensure that the encryption was applied to the database, I created a new user after implementing the change.  I temporily modified `db.utils` so that `npm run db:list-users` also includes the SSN.  I then ran this command and checked that the SSN on the new user was uncrypted.  Since I had already created users with unencrypted SSNs, I then ran `npm run db:encrypt-ssns`, the command I just created, and then reran `npm run db:list-users` to verify that the SSNs were encrypted.  I then reverted these modifications to `db.utils`. 
+Moreover, to ensure that the encryption was applied to the database, I created a new user after implementing the change.  I temporarily modified `db.utils` so that `npm run db:list-users` also includes the SSN.  I then ran this command and checked that the SSN on the new user was uncrypted.  Since I had already created users with unencrypted SSNs, I then ran `npm run db:encrypt-ssns`, the command I just created, and then reran `npm run db:list-users` to verify that the SSNs were encrypted.  I then reverted these modifications to `db.utils`. 
 
 ### Ticket VAL-202: Date of Birth Validation
 **Priority:** Critical 
@@ -202,19 +202,19 @@ Moreover, for a seamless user experience, these checks were mirrored on the fron
 #### Comments
 - A more maintainable architecture could involve defining and exporting a Zod schema in one place, and then using that schema for both front- and back-end validation.  This way, we have a single source of truth, and do not need to make changes to two places.  
 
-- This solutions interprets the entered DOB as UTC and localizes to client time when getting the month, day, and year.  If the client is in a different time zome from the server, there may be disagreement between the front- and back-ends regarding whether the user has turned 18.  But since there is less than a 1-day discrepancy between times anywhere in the world, I beleive that my solution is compliant with US common law, as contrary to naive expectation, one becomes legally a year older at the first minute of the day *before* their birthday.  We should work with legal to make this more rigorous, implement state-specific and international laws, and assessment whether local time or server time is the source of truth regarding age.  This is potentially a sizeable project on its own.
+- This solution interprets the entered DOB as UTC and localizes to client time when getting the month, day, and year.  If the client is in a different time zone from the server, there may be disagreement between the front- and back-ends regarding whether the user has turned 18.  But since there is less than a 1-day discrepancy between times anywhere in the world, I believe that my solution is compliant with US common law, as contrary to naive expectation, one becomes legally a year older at the first minute of the day *before* their birthday.  We should work with legal to make this more rigorous, implement state-specific and international laws, and assess whether local time or server time is the source of truth regarding age.  This is potentially a sizeable project on its own.
 
 ### Ticket VAL-206: Card Number Validation
 **Priority:** Critical  
 **Status:** Fixed   
 
 #### Root Cause
-Only primitive checks were in place -- the system allowed exactly those cards whose card numbers were 16 digits long and that started with `4` or `5` in  in `components/FundingModal.tsx`.
+Only primitive checks were in place -- the system allowed exactly those cards whose card numbers were 16 digits long and that started with `4` or `5` in `components/FundingModal.tsx`.
 
 #### Fix Implemented
-I consulted [this table on Wikipedia](https://en.wikipedia.org/wiki/Payment_card_number#Issuer_identification_number_(IIN)) to allow support for the patterns of all major cards.  This entailed allowing a broader range of lengths (Amex card numbers are 15 numbers, for example) and validating the IIN numbers against the known issuing networks. Most networks validate card numbers using the [Luhn algorithm](https://en.wikipedia.org/wiki/Luhn_algorithm), so card we validate card numbers using this algorithm where appropriate.  Since LankaPay does not use the Luhn algorithm, we allow all 16-digit card numbers that begin with `357111`.  We note that Diners Club enRoute also does not have validation, but, since this card also does not have a provided IIN range, the best we could do to allow these cards is allow all 15-digit card numbers, which would undermine the value of this fix for American Express users.  It seems, however, that [this card has been largely phased out](https://www.flyertalk.com/forum/air-canada-aeroplan/12859-enroute-card-being-phased-out-sort.html) and replaced with Diners Club International, which is supported, so my assessment is that dropping support for Diners Club enRoute is an acceptable tradeoff for more rigorous checks on other 15-digit cards.
+I consulted [this table on Wikipedia](https://en.wikipedia.org/wiki/Payment_card_number#Issuer_identification_number_(IIN)) to allow support for the patterns of all major cards.  This entailed allowing a broader range of lengths (Amex card numbers are 15 numbers, for example) and validating the IIN numbers against the known issuing networks. Most networks validate card numbers using the [Luhn algorithm](https://en.wikipedia.org/wiki/Luhn_algorithm), so we validate card numbers using this algorithm where appropriate.  Since LankaPay does not use the Luhn algorithm, we allow all 16-digit card numbers that begin with `357111`.  We note that Diners Club enRoute also does not have validation, but, since this card also does not have a provided IIN range, the best we could do to allow these cards is allow all 15-digit card numbers, which would undermine the value of this fix for American Express users.  It seems, however, that [this card has been largely phased out](https://www.flyertalk.com/forum/air-canada-aeroplan/12859-enroute-card-being-phased-out-sort.html) and replaced with Diners Club International, which is supported, so my assessment is that that dropping support for Diners Club enRoute is an acceptable tradeoff for more rigorous checks on other 15-digit cards.
 
-Since this is a user-experience issue, it is implemented on the frontend in `components/FundingModal.tsx`.  If users attempt to bypass this check using Postman or similar, they simply risk inconvieniencing themselves as the card my be rejected by the payment processor.
+Since this is a user-experience issue, it is implemented on the frontend in `components/FundingModal.tsx`.  If users attempt to bypass this check using Postman or similar, they simply risk inconveniencing themselves, as the card may be rejected by the payment processor.
 
 We note that these changes cannot guarantee that the card number was actually issued without making an API call to the issuing network, but this should be handled by the backend (not addressed in this fix because SecureBank is not a real bank).
 
@@ -224,7 +224,7 @@ We note that these changes cannot guarantee that the card number was actually is
 **Status:** Fixed
 
 #### Root Cause
-Only primitive checks were in place -- the system allowed exactly those cards whose card numbers were 16 digits long and that started with `4` or `5` in  in `components/FundingModal.tsx`.
+Only primitive checks were in place -- the system allowed exactly those cards whose card numbers were 16 digits long and that started with `4` or `5` in `components/FundingModal.tsx`.
 
 #### Fix Implemented
 The fixes described above to `VAL-206` also resolve this ticket.
@@ -331,7 +331,7 @@ Commit `4588954` changes the above lines to:
       return account;
 ```
 
-This way, there is not a data correctnessness violation, and no data in guessed or inferred. The error handling is already handled correctly on the front-end; in `components/AccountCreationModal.tsx` it is handled by lines 21-26 as of the initial commit:
+This way, there is not a data correctness violation, and no data is guessed or inferred. The error handling is already handled correctly on the front-end; in `components/AccountCreationModal.tsx`, it is handled by lines 21-26 as of the initial commit:
 
 ```tsx
     try {
@@ -351,7 +351,7 @@ Line 10 of `components/TransactionList.tsx` reads:
 ```tsx
 const { data: transactions, isLoading } = trpc.account.getTransactions.useQuery({ accountId });
 ```
-This line queries the transactions for the current user's account as caches the result.  When the line 
+This line queries the transactions for the current user's account and caches the result.  When the line 
 ```tsx
   const fundAccountMutation = trpc.account.fundAccount.useMutation();
 ```
@@ -371,7 +371,7 @@ The line in `components/FundingModal.tsx` reference above was replaced with
 This invalidates the data currently being used by `components/TransactionList.tsx`, and forces it to query the database again.
 
 #### Testing
-Before this change, newly created transactions would not appear in my account.  Sometimes, switching back and forth between accounts could make them appear, but the only way I could make it work with certainly was to log out and then back in again.
+Before this change, newly created transactions would not appear in my account.  Sometimes, switching back and forth between accounts could make them appear, but the only way I could make it work with certainty was to log out and then back in again.
 After the change, new transactions appear immediately when funding the account.
 
 ### Ticket PERF-407: Performance Degradation
@@ -399,7 +399,7 @@ const accountTransactions = await db
 Notice that the `accountDetails` are queried each iteration of the loop, leading to a potentially large number of database queries, each for the purpose of acquiring the `accountType`for the **same account**.  
 
 #### Comment 
-Another potential performance issue is that there is no limit to the number of transactions that can be displayed at once, leading to potential performance issues with the browser.  It may be better to paginate the transaction list, so that smaller chunks of data are queried and displayed at a time.  This would be a significant update, and is not included in this fix.
+Another potential performance issue is that there is no limit to the number of transactions that can be displayed at once, leading to potential performance issues with the browser.  It may be better to paginate the transaction list so that smaller chunks of data are queried and displayed at a time.  This would be a significant update, and is not included in this fix.
 
 #### Fix Implemented
 Directly above the code block above are the lines:
@@ -426,7 +426,7 @@ for (const transaction of accountTransactions) {
   });
 }
 ```
-Without performing a datbase query each iteration, the operation is significantly faster.
+Without performing a database query each iteration, the operation is significantly faster.
 
 
 ### Ticket PERF-404: Transaction Sorting
@@ -441,7 +441,7 @@ const accountTransactions = await db
   .from(transactions)
   .where(eq(transactions.accountId, input.accountId));
 ```
-Since SQL databased never guarantee order unless explicitly requested, the list of transactions may be in any order.  In practice, this implementation seems to return them in roughly ascending order.
+Since SQL databases never guarantee order unless explicitly requested, the list of transactions may be in any order.  In practice, this implementation seems to return them in roughly ascending order.
 
 #### Fix Implemented
 I chained an `.orderBy()` onto to query; the updated code is as follow:
@@ -458,7 +458,7 @@ import { eq, and, desc } from "drizzle-orm";
 ```
 
 #### Testing
-Before this fix, the transactions appeared in roughly ascending order.  After the fix, the appear in descending order, indicating that it worked as intended.
+Before this fix, the transactions appeared in roughly ascending order.  After the fix, they appear in descending order, indicating that it worked as intended.
 
 ### Ticket PERF-406: Balance Calculation
 **Priority:** Critical
@@ -476,7 +476,7 @@ equivalent to
 ```ts
 finalBalance += amount;
 ```
-Which leads to fewer bits of the significant being truncated.
+which leads to fewer bits of the significant being truncated.
 
 #### Fix Implemented
 The above loop was replaced with
@@ -485,7 +485,7 @@ finalBalance += amount;
 ```
 
 #### Additional Changes Needed
-The floating point issue described above is not fully resolved with this fix.  With a large enough account balance, the least significant bit of the significand will represent a quantity greater than a 0.01, meaning that monerary quantities cannot be accurately recorded.  Drift can occur even without the exponent reaching this size.  **The recommended solution is to store account balances as integer cents.**  The possibility of integer overflow is noted, but since SQLite can hold integers larger than 9.2 pentillion, which as cents would represent over 92 quadrillion dollars, no such user currently exists on Earth.  Should one emerge, we can request that they open a second account or consider additional fixes.  As such, we disregard this issue for now and proceed with the recommended fix. 
+The floating point issue described above is not fully resolved with this fix.  With a large enough account balance, the least significant bit of the significand will represent a quantity greater than 0.01, meaning that monetary quantities cannot be accurately recorded.  Drift can occur even without the exponent reaching this size.  **The recommended solution is to store account balances as integer cents.**  The possibility of integer overflow is noted, but since SQLite can hold integers larger than 9.2 quintillion, which as cents would represent over 92 quadrillion dollars, no such user currently exists on Earth.  Should one emerge, we can request that they open a second account or consider additional fixes.  As such, we disregard this issue for now and proceed with the recommended fix. 
 
 
 To do this, we should update the `account` schema in `lib/db/schema.ts`.  Line 27 of the `account` schema is currently
@@ -496,9 +496,9 @@ to
 ```ts
 balance: integer("balance").default(0).notNull(),
 ```
-We would need to to the same thing the the `amount` column for the `transactions` schema.   These changed will need to be mirrored in the table created SQL in `lib/db/index.ts`; for example, `balance REAL DEFAULT 0 NOT NULL,` should become `balance INTEGER DEFAULT 0 NOT NULL,`, and the corresponding change must also me made for the `transactions` table.
+We would need to do the same thing the the `amount` column for the `transactions` schema.   These changes will need to be mirrored in the table created SQL in `lib/db/index.ts`; for example, `balance REAL DEFAULT 0 NOT NULL,` should become `balance INTEGER DEFAULT 0 NOT NULL,`, and the corresponding change must also be made for the `transactions` table.
 
-Moreover, the frontend will need to be modified so that the integer cent amounts are formatted in dollars as expected.  This is perhaps most easily dont by stringifying the integer and inserting a decimal point two places from the right.
+Moreover, the frontend will need to be modified so that the integer cent amounts are formatted in dollars as expected.  This is perhaps most easily done by stringifying the integer and inserting a decimal point two places from the right.
 
 Finally, we need to migrate existing user accounts to the new schema.
 
@@ -507,7 +507,7 @@ Finally, we need to migrate existing user accounts to the new schema.
 **Status:** Fixed with "caveats" (see comments)
 
 #### Root Cause
-`lib/db/index.ts` begain with the lines 
+`lib/db/index.ts` begins with the lines 
 ```ts
 const sqlite = new Database(dbPath);
 export const db = drizzle(sqlite, { schema });
@@ -523,7 +523,7 @@ export function initDb() {
 ...
 ```
 
-The array `connections` and connection `conn` are neither exported nor used further.  Moreover, each time this module is imported, the connections `sqlite` and `conn` are created, leading to a potentially large accumulation of open connections.
+The array `connections` and the connection `conn` are neither exported nor used further.  Moreover, each time this module is imported, the connections `sqlite` and `conn` are created, leading to a potentially large accumulation of open connections.
 
 #### Fix Implemented
 I use the `globalThis` object to use the same connection between instances and delete `connections` and `conn`:
@@ -542,7 +542,7 @@ export function initDb() {
 ...
 ```
 
-In order to add the `sqlite` field to `globalThis` in TypeScript, I modified its type defintion by creating a `global.d.ts` file with the contents:
+In order to add the `sqlite` field to `globalThis` in TypeScript, I modified its type definition by creating a `global.d.ts` file with the contents:
 ```ts
 import Database from "better-sqlite3";
 
@@ -552,7 +552,7 @@ declare global {
 ```
 
 #### Comments 
-A single connection is not viable for a global banking platform.  But since SQLite is file-based and locks the database file when database operations are made, this issue is not resolved by creating more connections.  The architecture created in the fix is approprate for SQLite, but SQLite is not approprate for a global banking platform.  In order to scale the application, a more robust database allowing concurrency such as PostgreSQL is recommended.
+A single connection is not viable for a global banking platform.  But since SQLite is file-based and locks the database file when database operations are made, this issue is not resolved by creating more connections.  The architecture created in the fix is appropriate for SQLite, but SQLite is not appropriate for a global banking platform.  In order to scale the application, a more robust database allowing concurrency, such as PostgreSQL, is recommended.
 
 #### Testing
 The test in `tests/db.test.ts` ensures that the `Database()` constructor for the connection is called only once after several imports.
