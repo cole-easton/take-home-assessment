@@ -38,7 +38,7 @@
 #### Medium
 | Ticket | Description | Status |
 |---|---|---:|
-| UI-101 | Dark Mode Text Visibility | ❌ |
+| UI-101 | Dark Mode Text Visibility | ⚠️ |
 | VAL-203 | State Code Validation | ❌ |
 | VAL-204 | Phone Number Format | ❌ |
 | VAL-209 | Amount Input Issues | ❌ |
@@ -164,7 +164,6 @@ No checks were in place to ensure that users were at least 18 years of age.
 Checks were implemented in the backend first, and this is the most critical place to check, since front-end checks could be overwritten using Postman, curl, etc., and the database needs to be compliant should it be audited by government regulators.  The following shows the `.refine` that was added to the `dateOfBirth` field in the Zod schema for the signup data in `server/routers/auth.ts`.
 
 ```ts
-// example
 dateOfBirth: z.string().refine((dob) => {
           const birth = new Date(dob);
           const now = new Date();
@@ -238,6 +237,37 @@ Only primitive checks were in place -- the system allowed exactly those cards wh
 #### Fix Implemented
 The fixes described above to `VAL-206` also resolve this ticket.
 
+### Ticket UI-101: Dark Mode Text Visibility
+**Priority:** Medium
+**Status:** "Fixed" (see comments)
+
+#### Root Cause
+`app/globals.css` contained the block
+```css
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+```
+
+#### Fix Implemented
+I replaced this block with:
+```css
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #0a0a0a;
+  }
+}
+```
+
+#### Comments
+This fix resolves the contrast issue and improves the user experience for the time being, as is thus viable as a quick path to production.  But ideally, dark mode should be dark.  The reason for the contrast issue is that the app does not use `--background` as the actual background color, because the body style is overwritten by inline Tailwind.  This needs to be addressed so that colors are not static, but respond to user settings.
+
+#### Testing
+Opening the app in dark mode before and after implementing the change demonstrated that the contrast was improved.
 
 ### Ticket VAL-208: Weak Password Requirements
 **Priority:** Critical
