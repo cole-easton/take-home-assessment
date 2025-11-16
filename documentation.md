@@ -260,6 +260,8 @@ In order to use this quickly, I also added the following script to `package.json
 ```
 This enables the command to be easily run on the production database.
 
+(Note that the encryption utility was written in JavaScript rather than TypeScript so that it could be imported into `db-util.js`.)
+
 #### Comments
 `encryption.js` contains the lines 
 ```js
@@ -428,6 +430,62 @@ to
 ```ts
 balance: integer("balance").default(0).notNull(),
 ```
+We would need to to the same thing the the `amount` column for the `transactions` schema.   These changed will need to be mirrored in the table created SQL in `lib/db/index.ts`; for example, `balance REAL DEFAULT 0 NOT NULL,` should become `balance INTEGER DEFAULT 0 NOT NULL,`, and the corresponding change must also me made for the `transactions` table.
+
 Moreover, the frontend will need to be modified so that the integer cent amounts are formatted in dollars as expected.  This is perhaps most easily dont by stringifying the integer and inserting a decimal point two places from the right.
 
-Finally, we need to migrate existing user accounts to the new schema, perhaps by using a script similar to the one described in the fix to Ticket SEC-301.
+Finally, we need to migrate existing user accounts to the new schema.
+
+### Ticket PERF-408: Resource Leak
+**Priority:** Critical
+**Status:** Fixed with "caveats" (see comments)
+
+#### Root Cause
+`lib/db/index.ts` begain with the lines 
+```ts
+const sqlite = new Database(dbPath);
+export const db = drizzle(sqlite, { schema });
+
+const connections: Database.Database[] = [];
+
+export function initDb() {
+  const conn = new Database(dbPath);
+  connections.push(conn);
+
+  // Create tables if they don't exist
+  sqlite.exec(`
+...
+```
+
+The array `connections` and connection `conn` are neither exported nor used further.  Moreover, each time this module is imported, the connections `sqlite` and `conn` are created, leading to a potentially large accumulation of open connections.
+
+#### Fix Implemented
+I use the `globalThis` object to use the same connection between instances and delete `connections` and `conn`:
+
+```ts
+if (!globalThis._sqlite) {
+  globalThis._sqlite = new Database(dbPath);
+}
+const sqlite = globalThis._sqlite;
+
+export const db = drizzle(globalThis._sqlite, { schema });
+
+const connections: Database.Database[] = [];
+
+export function initDb() {
+  // Create tables if they don't exist
+  sqlite.exec(`
+...
+```
+
+In order to add the `sqlite` field to `globalThis` in TypeScript, I modified its type defintion by creating a `global.d.ts` file with the contents:
+```ts
+import Database from "better-sqlite3";
+
+declare global {
+  var _sqlite: Database.Database | undefined;
+}
+```
+
+#### Comments 
+A single connection is not viable for a global banking platform.  But since SQLite is file-based and locks the database file when database operations are made, this issue is not resolved by creating more connections.  The architecture created in the fix is approprate for SQLite, but SQLite is not approprate for a global banking platform.  In order to scale the application, a more robust database allowing concurrency such as PostgreSQL is recommended.

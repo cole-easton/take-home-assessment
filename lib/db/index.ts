@@ -4,15 +4,16 @@ import * as schema from "./schema";
 
 const dbPath = "bank.db";
 
-const sqlite = new Database(dbPath);
-export const db = drizzle(sqlite, { schema });
+if (!globalThis._sqlite) {
+  globalThis._sqlite = new Database(dbPath);
+}
+const sqlite = globalThis._sqlite;
+
+export const db = drizzle(globalThis._sqlite, { schema });
 
 const connections: Database.Database[] = [];
 
 export function initDb() {
-  const conn = new Database(dbPath);
-  connections.push(conn);
-
   // Create tables if they don't exist
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS users (
