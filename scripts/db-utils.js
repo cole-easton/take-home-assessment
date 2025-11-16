@@ -1,5 +1,6 @@
 const Database = require("better-sqlite3");
 const path = require("path");
+const { encrypt } = require(path.join(__dirname, "..", "lib", "security", "encryption"));
 
 const dbPath = path.join(__dirname, "..", "bank.db");
 const db = new Database(dbPath);
@@ -59,6 +60,26 @@ if (command === "list-users") {
     } else {
       console.log(`User ${email} not found`);
     }
+  }
+} else if (command === "encrypt-ssns") {
+  console.log("\n=== Encrypting existing SSNs ===");
+
+  const users = db.prepare("SELECT id, ssn FROM users").all();
+
+  if (users.length === 0) {
+    console.log("No users found.");
+  } else {
+    const update = db.prepare("UPDATE users SET ssn = ? WHERE id = ?");
+
+    users.forEach((user) => {
+      if (user.ssn && !user.ssn.includes(":")) { // crude check to avoid double-encrypting
+        const encrypted = encrypt(user.ssn);
+        update.run(encrypted, user.id);
+        console.log(`Encrypted SSN for user ID ${user.id}`);
+      }
+    });
+
+    console.log("All SSNs encrypted.");
   }
 } else {
   console.log(`

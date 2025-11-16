@@ -6,6 +6,7 @@ import { publicProcedure, router } from "../trpc";
 import { db } from "@/lib/db";
 import { users, sessions } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import {encrypt, decrypt} from  "@/lib/security/encryption";
 
 export const authRouter = router({
   signup: publicProcedure
@@ -62,9 +63,12 @@ export const authRouter = router({
 
       const hashedPassword = await bcrypt.hash(input.password, 10);
 
+      const encryptedSSN = encrypt(input.ssn);
+
       await db.insert(users).values({
         ...input,
         password: hashedPassword,
+        ssn: encryptedSSN,
       });
 
       // Fetch the created user

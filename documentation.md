@@ -4,11 +4,9 @@
 
 ---
 
-## Summary of Work
-- Total issues investigated: X  
-- Total issues fixed: X  
-- Tests added: Yes/No  
-- Prioritization strategy: Critical → High → Medium → UI  
+## Summary of Work  
+- Total Issues fixed: 
+- Issues fixed:    
 
 ---
 
@@ -163,7 +161,9 @@ Before commit `118516c`, Line 71 of `components/TransactionList.tsx` contained t
 This treats the transaction description as HTML, potentially allowing dangerous `<script>` elements to be executed by the client.
 
 #### Fix Implemented
-Line 71 of `components/TransactionList.tsx` was changed to `<span>{transaction.description || "-"}</span>`{:.tsx} in commit `118516c` which treats the description as text and mitigates the potential for XSS attacks. 
+Line 71 of `components/TransactionList.tsx` was changed to ```tsx 
+<span>{transaction.description || "-"}</span>
+``` in commit `118516c` which treats the description as text and mitigates the potential for XSS attacks. 
 
 ### Ticket PERF-401: Account Creation Error
 **Priority:** Critical
@@ -209,3 +209,68 @@ This way, there is not a data correctnessness violation, and no data in guessed 
       setError(err.message || "Failed to create account");
     }
 ```
+
+### Ticket SEC-301: SSN Storage
+**Priority:** Critical 
+**Status:** Fixed
+
+#### Root Cause
+The user's SSN is written as typed in the frontend directly to the database.
+
+#### Fix Implemented
+I added an encrpytion/decryption utility at `lib/security/encryption.js` which encrypts data using `AES-256-GSM` as implemented in the built-in `node:crypto` module.  I used this utility to encrypt the SSN in `server/router/auth.ts`:
+```ts
+const encryptedSSN = encrypt(input.ssn);
+
+      await db.insert(users).values({
+        ...input,
+        password: hashedPassword,
+        ssn: encryptedSSN,
+      });
+```
+Unlike the password field which was hashed, we encrypt SSN because we may reasonably need to access it for legitimate business purposes.
+
+Since this fixes the issue for future users, but does not retroactively fix the database for existing users, we need to be able to encrypt the SSNs in the existing database.  To do this, I imported the `encrypt` function into `scripts/db-utils.js` and added an `encrypt-ssns` command:
+```js
+else if (command === "encrypt-ssns") {
+  console.log("\n=== Encrypting existing SSNs ===");
+
+  const users = db.prepare("SELECT id, ssn FROM users").all();
+
+  if (users.length === 0) {
+    console.log("No users found.");
+  } else {
+    const update = db.prepare("UPDATE users SET ssn = ? WHERE id = ?");
+
+    users.forEach((user) => {
+      if (user.ssn && !user.ssn.includes(":")) { // crude check to avoid double-encrypting
+        const encrypted = encrypt(user.ssn);
+        update.run(encrypted, user.id);
+        console.log(`Encrypted SSN for user ID ${user.id}`);
+      }
+    });
+
+    console.log("All SSNs encrypted.");
+  }
+}
+```
+In order to use this quickly, I also added the following script to `package.json`:
+```json
+"db:encrypt-ssns": "node scripts/db-utils.js encrypt-ssns"
+```
+This enables the command to be easily run on the production database.
+
+#### Comments
+`encryption.js` contains the lines 
+```js
+const key = Buffer.from(
+    process.env.ENCRYPTION_KEY ??
+    "0123456789abcdef0123456789abcdef", // fallback for assessment evaluators
+    "utf8"
+);
+``` 
+The fallback purely for the purposes of the assessment to minimize setup needed for the hiring manager; for an actual application, each developer would keep the key in their own `.env` file and no fallback would be provided.  A .env.example file is included as an example of what the `.env` file should look like.
+
+#### Testing
+To test the encryption, I created a new user after implementing the change.  I temporily modified `db.utils` so that `npm run db:list-users` also includes the SSN.  I then ran this command and checked that the SSN on the new user was uncrypted.  Since I had already created users with unencrypted SSNs, I then ran `npm run db:encrypt-ssns`, the command I just created, and then reran `npm run db:list-users` to verify that the SSNs were encrypted.  I then reverted these modifications to `db.utils`. 
+
