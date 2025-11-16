@@ -308,7 +308,7 @@ After the change, new transactions appear immediately when funding the account.
 
 ### Ticket PERF-407: Performance Degradation
 **Priority:** High
-**Status:** Fixed
+**Status:** Fixed with caveats (see comment)
 
 #### Root Cause
  `server/routers/account.ts` previously contained the code 
@@ -329,6 +329,9 @@ const accountTransactions = await db
       }
 ```
 Notice that the `accountDetails` are queried each iteration of the loop, leading to a potentially large number of database queries, each for the purpose of acquiring the `accountType`for the **same account**.  
+
+#### Comment 
+Another potential performance issue is that there is no limit to the number of transactions that can be displayed at once, leading to potential performance issues with the browser.  It may be better to paginate the transaction list, so that smaller chunks of data are queried and displayed at a time.  This would be a significant update, and is not included in this fix.
 
 #### Fix Implemented
 Directly above the code block above are the lines:
@@ -356,3 +359,35 @@ for (const transaction of accountTransactions) {
 }
 ```
 Without performing a datbase query each iteration, the operation is significantly faster.
+
+
+### Ticket PERF-404: Transaction Sorting
+**Priority:** Medium
+**Status:** Fixed
+
+#### Root Cause
+`server/routers/account.ts` queries the transactions by running
+```ts
+const accountTransactions = await db
+  .select()
+  .from(transactions)
+  .where(eq(transactions.accountId, input.accountId));
+```
+Since SQL databased never guarantee order unless explicitly requested, the list of transactions may be in any order.  In practice, this implementation seems to return them in roughly ascending order.
+
+#### Fix Implemented
+I chained an `.orderBy()` onto to query; the updated code is as follow:
+```ts
+const accountTransactions = await db
+  .select()
+  .from(transactions)
+  .where(eq(transactions.accountId, input.accountId))
+  .orderBy(desc(transactions.createdAt));
+```
+Since most banking applications have the most recent transactions at the top, I ordered them in descending as seen in the last line above.  This entailed importing `desc` from Drizzle by modifying line 6 of `account.ts` to:
+```ts
+import { eq, and, desc } from "drizzle-orm";
+```
+
+#### Testing
+Before this fix, the transactions appeared in roughly ascending order.  After the fix, the appear in descending order, so I know that it worked as intended.
